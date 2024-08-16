@@ -1,5 +1,3 @@
-// ignore_for_file: unused_local_variable
-
 import 'dart:html';
 import 'dart:html' as html;
 import 'dart:io';
@@ -12,31 +10,14 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-// import 'package:amplify_storage_s3/amplify_storage_s3.dart';
 import 'package:aws_common/web.dart';
 import 'package:path_provider/path_provider.dart';
-// import 'package:amplify_flutter/amplify.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
 import 'package:path/path.dart' as path;
 import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http_parser/http_parser.dart';
-// class MinioClient {
-//   final String endPoint;
-//   final String accessKey;
-//   final String secretKey;
-//   final bool useSSL;
-
-//   MinioClient({
-//     required this.endPoint,
-//     required this.accessKey,
-//     required this.secretKey,
-//     this.useSSL = false,
-//   });
-
-//   // Add methods for interacting with MinIO server here
-// }
 
 class birdNet extends StatefulWidget {
   final String deviceId;
@@ -55,14 +36,35 @@ class _MyHomePageState extends State<birdNet> {
   String searchTimestamp = '';
   late TextEditingController _searchController; // Add TextEditingController
 
+  // Dropdown value
+  String? _selectedDeviceId;
+  List<String> _deviceIds = []; // List of device IDs
+
+  // Device details
+  String _deviceStatus = 'Unknown';
+  String _lastReceivedTime = 'Unknown';
+
   @override
   void initState() {
     super.initState();
     _startDate = DateTime.now();
     _endDate = DateTime.now();
     _searchController = TextEditingController();
-    // Amplify.addPlugins([AmplifyStorageS3()]);
-    // configureAmplify();
+    _deviceIds = [widget.deviceId]; // Initialize with current device ID
+
+    // Fetch additional device IDs if needed
+    fetchDeviceIds();
+  }
+
+  Future<void> fetchDeviceIds() async {
+    // Add your code to fetch device IDs
+    // Example:
+    // final response = await http.get(...);
+    // if (response.statusCode == 200) {
+    //   setState(() {
+    //     _deviceIds = jsonDecode(response.body);
+    //   });
+    // }
   }
 
   @override
@@ -87,7 +89,6 @@ class _MyHomePageState extends State<birdNet> {
       final List<dynamic> jsonData = jsonDecode(response.body);
       setState(() {
         tableData = jsonData.map((item) => ApiData.fromJson(item)).toList();
-        // Sort the tableData list based on timestamp in descending order
         tableData.sort((b, a) => DateFormat('dd-MM-yyyy_HH-mm-ss')
             .parse(b.timestamp)
             .compareTo(DateFormat('dd-MM-yyyy_HH-mm-ss').parse(a.timestamp)));
@@ -100,7 +101,49 @@ class _MyHomePageState extends State<birdNet> {
   }
 
   void updateData() async {
-    await getAPIData(widget.deviceId, _startDate, _endDate);
+    if (_selectedDeviceId != null) {
+      await getAPIData(_selectedDeviceId!, _startDate, _endDate);
+      await updateDeviceDetails(_selectedDeviceId!);
+    }
+  }
+
+  Future<void> updateDeviceDetails(String deviceId) async {
+    // Fetch device details
+    final response = await http.get(Uri.https(
+      'c27wvohcuc.execute-api.us-east-1.amazonaws.com',
+      '/default/beehive_activity_api',
+    ));
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final device = (data['devices'] as List<dynamic>).firstWhere(
+        (device) => device['deviceId'] == deviceId,
+        orElse: () => {'deviceId': 'Unknown', 'lastReceivedTime': 'Unknown'},
+      );
+
+      setState(() {
+        _deviceStatus = _getDeviceStatus(device['lastReceivedTime']);
+        _lastReceivedTime = device['lastReceivedTime'];
+      });
+    }
+  }
+
+  String _getDeviceStatus(String lastReceivedTime) {
+    if (lastReceivedTime == 'Unknown') return 'Unknown';
+
+    try {
+      final lastReceivedDate = DateTime.parse(lastReceivedTime);
+      final currentTime = DateTime.now();
+      final difference = currentTime.difference(lastReceivedDate);
+
+      if (difference.inMinutes <= 2) {
+        return 'Active';
+      } else {
+        return 'Inactive';
+      }
+    } catch (e) {
+      return 'Inactive';
+    }
   }
 
   Future<void> downloadMp3(String deviceId, String timestamp) async {
@@ -210,500 +253,151 @@ class _MyHomePageState extends State<birdNet> {
             color: Colors.white,
           ),
         ),
-        backgroundColor: Color.fromARGB(255, 152, 207, 158,),
-        elevation: 0.0,
-        centerTitle: true,
+        backgroundColor: Color.fromARGB(
+          255,
+          52,
+          73,
+          94,
+        ),
       ),
-      body: SingleChildScrollView(
-        child: Container(
-          child: Center(
-            child: Container(
-              padding: EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          onTap: () async {
-                            final DateTime? selectedDate = await showDatePicker(
-                              context: context,
-                              initialDate: _startDate,
-                              firstDate: DateTime(1900),
-                              lastDate: DateTime.now(),
-                              builder: (context, child) {
-                                return Theme(
-                                  data: Theme.of(context).copyWith(
-                                    colorScheme: const ColorScheme.light(
-                                      primary: Colors.green,
-                                      onPrimary: Colors.white,
-                                      onSurface: Colors.purple,
-                                    ),
-                                    textButtonTheme: TextButtonThemeData(
-                                      style: TextButton.styleFrom(
-                                        elevation: 10,
-                                        backgroundColor:
-                                            Colors.black, // button text color
-                                      ),
-                                    ),
-                                  ),
-                                  // child: child!,
-                                  child: MediaQuery(
-                                    data: MediaQuery.of(context)
-                                        .copyWith(alwaysUse24HourFormat: true),
-                                    child: child ?? Container(),
-                                  ),
-                                );
-                              },
-                            );
-                            if (selectedDate != null) {
-                              setState(() {
-                                _startDate = selectedDate;
-                              });
-                            }
-                          },
-                          decoration: InputDecoration(
-                            labelText: 'Start Date',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(
-                                vertical: 12, horizontal: 16),
-                          ),
-                          controller: TextEditingController(
-                              text:
-                                  DateFormat('dd-MM-yyyy').format(_startDate)),
-                        ),
-                      ),
-                      SizedBox(width: 16.0),
-                      Expanded(
-                        child: TextFormField(
-                          onTap: () async {
-                            final DateTime? selectedDate = await showDatePicker(
-                              context: context,
-                              initialDate: _endDate,
-                              firstDate: DateTime(1900),
-                              lastDate: DateTime.now(),
-                              builder: (context, child) {
-                                return Theme(
-                                  data: Theme.of(context).copyWith(
-                                    colorScheme: const ColorScheme.light(
-                                      primary: Colors.green,
-                                      onPrimary: Colors.white,
-                                      onSurface: Colors.purple,
-                                    ),
-                                    textButtonTheme: TextButtonThemeData(
-                                      style: TextButton.styleFrom(
-                                        elevation: 10,
-                                        backgroundColor:
-                                            Colors.black, // button text color
-                                      ),
-                                    ),
-                                  ),
-                                  // child: child!,
-                                  child: MediaQuery(
-                                    data: MediaQuery.of(context)
-                                        .copyWith(alwaysUse24HourFormat: true),
-                                    child: child ?? Container(),
-                                  ),
-                                );
-                              },
-                            );
-                            if (selectedDate != null) {
-                              setState(() {
-                                _endDate = selectedDate;
-                              });
-                            }
-                          },
-                          decoration: InputDecoration(
-                            labelText: 'End Date',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.symmetric(
-                                vertical: 12, horizontal: 16),
-                          ),
-                          controller: TextEditingController(
-                              text: DateFormat('dd-MM-yyyy').format(_endDate)),
-                        ),
-                      ),
-                      SizedBox(width: 16.0),
-                      ElevatedButton(
-                        onPressed: () {
-                          updateData();
-                        },
-                        child: Text(
-                          'Get Data',
-                          style: TextStyle(
-                            fontSize: 20,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 152, 207, 158,),
-                          minimumSize: Size(80, 0),
-                          padding: EdgeInsets.symmetric(
-                              vertical: 20, horizontal: 24),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 16.0),
-                      ElevatedButton(
-                        onPressed: () async {
-                          await downloadTableDataAsCsv();
-                        },
-                        child: Text(
-                          'Download CSV',
-                          style: TextStyle(
-                            fontSize: 20,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 152, 207, 158,),
-                          minimumSize: Size(80, 0),
-                          padding: EdgeInsets.symmetric(
-                              vertical: 20, horizontal: 24),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 16.0),
-                      ElevatedButton(
-                        onPressed: () async {
-                          String timestamp = DateFormat('dd-MM-yyyy_HH-mm-ss')
-                              .format(DateTime.now());
-                          String filename = 'S10_$timestamp.mp3';
-                          String bucketName = 'birdnet-sagemaker';
-                          await uploadAudioToS3(bucketName, filename);
-                        },
-                        child: Text(
-                          'Upload',
-                          style: TextStyle(
-                            fontSize: 20,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Color.fromARGB(255, 152, 207, 158,),
-                          minimumSize: Size(80, 0),
-                          padding: EdgeInsets.symmetric(
-                              vertical: 20, horizontal: 24),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 16.0),
-                  // Error message
-                  if (errorMessage.isNotEmpty)
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Text(
-                          errorMessage,
-                          style: TextStyle(
-                            color: Color.fromARGB(255, 152, 207, 158,),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
-                        ),
-                      ),
-                    ),
-                  SizedBox(height: 16.0),
-                  // Table data
-                  DataTable(
-                    decoration: BoxDecoration(),
-                    dataRowHeight: 60,
-                    columns: [
-                      DataColumn(
-                        label: SizedBox(
-                          // Wrap the label with SizedBox to set fixed width
-                          width: 50, // Set a fixed width for the Index column
-                          child: Text(
-                            'Index',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-                        numeric:
-                            true, // This indicates that the column contains numeric data
-                      ),
-                      // DataColumn(
-                      //   label: SizedBox(
-                      //     width:
-                      //         160, // Set the desired width for the DataColumn containing the search field
-                      //     child: Expanded(
-                      //       child: Padding(
-                      //         padding:
-                      //             const EdgeInsets.symmetric(horizontal: 0.0),
-                      //         child: TextField(
-                      //           controller: _searchController,
-                      //           onChanged: (value) {
-                      //             setState(() {
-                      //               // Handle changes if necessary
-                      //             });
-                      //           },
-                      //           decoration: InputDecoration(
-                      //             labelText: 'Timestamp',
-                      //             labelStyle: TextStyle(
-                      //               fontSize: 15,
-                      //               color: Colors.black,
-                      //               fontWeight: FontWeight.bold,
-                      //             ),
-                      //             prefixIcon: Icon(CupertinoIcons.search),
-                      //             contentPadding: EdgeInsets.symmetric(
-                      //               vertical: 12,
-                      //               horizontal: 16,
-                      //             ),
-                      //             border: InputBorder.none,
-                      //           ),
-                      //         ),
-                      //       ),
-                      //     ),
-                      //   ),
-                      // ),
-                      DataColumn(
-                        label: SizedBox(
-                          // Wrap the label with SizedBox to set fixed width
-                          width:
-                              150, // Set a fixed width for the Common Name column
-                          child: Text(
-                            'Timestamp',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: SizedBox(
-                          // Wrap the label with SizedBox to set fixed width
-                          width:
-                              150, // Set a fixed width for the Common Name column
-                          child: Text(
-                            'Common Name',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: SizedBox(
-                          // Wrap the label with SizedBox to set fixed width
-                          width:
-                              150, // Set a fixed width for the Scientific Name column
-                          child: Text(
-                            'Scientific Name',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: SizedBox(
-                          // Wrap the label with SizedBox to set fixed width
-                          width:
-                              100, // Set a fixed width for the Confidence column
-                          child: Text(
-                            'Confidence',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                      DataColumn(
-                        label: SizedBox(
-                          // Wrap the label with SizedBox to set fixed width
-                          width:
-                              100, // Set a fixed width for the Download Mp3 column
-                          child: Text(
-                            'Download',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    rows: tableData
-                        .asMap()
-                        .entries
-                        .where((entry) => entry.value.timestamp
-                            .startsWith(_searchController.text))
-                        .map(
-                          (entry) => DataRow(
-                            cells: [
-                              DataCell(
-                                SingleChildScrollView(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        (entry.key + 1).toString(),
-                                        style: TextStyle(
-                                          color: Colors.black,
-                                          fontSize: 20,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                SingleChildScrollView(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        entry.value.timestamp,
-                                        style: TextStyle(
-                                          color: Colors.black,
-                                          fontSize: 20,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                SingleChildScrollView(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: entry.value.detections
-                                        .map(
-                                          (detection) => Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                (entry.value.detections.indexOf(
-                                                                detection) +
-                                                            1)
-                                                        .toString() +
-                                                    ") " +
-                                                    detection.commonName,
-                                                style: TextStyle(
-                                                  color: Colors.black,
-                                                  fontSize: 20,
-                                                ),
-                                              ),
-                                              if (detection !=
-                                                  entry.value.detections.last)
-                                                Divider(),
-                                            ],
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                SingleChildScrollView(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: entry.value.detections
-                                        .map(
-                                          (detection) => Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                (entry.value.detections.indexOf(
-                                                                detection) +
-                                                            1)
-                                                        .toString() +
-                                                    ") " +
-                                                    detection.scientificName,
-                                                style: TextStyle(
-                                                  color: Colors.black,
-                                                  fontSize: 20,
-                                                ),
-                                              ),
-                                              if (detection !=
-                                                  entry.value.detections.last)
-                                                Divider(),
-                                            ],
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                SingleChildScrollView(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: entry.value.detections
-                                        .map(
-                                          (detection) => Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                (entry.value.detections.indexOf(
-                                                                detection) +
-                                                            1)
-                                                        .toString() +
-                                                    ") " +
-                                                    detection.confidence
-                                                        .toStringAsFixed(3),
-                                                style: TextStyle(
-                                                  color: Colors.black,
-                                                  fontSize: 20,
-                                                ),
-                                              ),
-                                              if (detection !=
-                                                  entry.value.detections.last)
-                                                Divider(),
-                                            ],
-                                          ),
-                                        )
-                                        .toList(),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                ElevatedButton(
-                                  onPressed: () {
-                                    downloadMp3(
-                                        widget.deviceId, entry.value.timestamp);
-                                  },
-                                  style: ButtonStyle(
-                                    backgroundColor:
-                                        MaterialStateProperty.all<Color>(
-                                      Colors.teal,
-                                    ),
-                                  ),
-                                  child: Text('Download'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ],
+      body: Padding(
+        padding: EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Device ID Dropdown
+            DropdownButtonFormField<String>(
+              value: _selectedDeviceId,
+              decoration: InputDecoration(
+                labelText: 'Select Device ID',
+                border: OutlineInputBorder(),
               ),
+              onChanged: (String? newValue) {
+                setState(() {
+                  _selectedDeviceId = newValue;
+                  updateData();
+                });
+              },
+              items: _deviceIds.map<DropdownMenuItem<String>>((deviceId) {
+                return DropdownMenuItem<String>(
+                  value: deviceId,
+                  child: Text(deviceId),
+                );
+              }).toList(),
             ),
-          ),
+            SizedBox(height: 16),
+
+            // Device Details
+            if (_selectedDeviceId != null) ...[
+              Text(
+                'Device ID: $_selectedDeviceId',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              Text(
+                'Current Status: $_deviceStatus',
+                style: TextStyle(fontSize: 16),
+              ),
+              Text(
+                'Last Received Time: $_lastReceivedTime',
+                style: TextStyle(fontSize: 16),
+              ),
+            ],
+            SizedBox(height: 24),
+
+            // Date Pickers and Button
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Start Date:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      SizedBox(height: 8),
+                      TextField(
+                        controller: _searchController,
+                        onTap: () async {
+                          final DateTime? pickedDate = await showDatePicker(
+                            context: context,
+                            initialDate: _startDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                          );
+                          if (pickedDate != null && pickedDate != _startDate) {
+                            setState(() {
+                              _startDate = pickedDate;
+                            });
+                          }
+                        },
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(),
+                          hintText: DateFormat('yyyy-MM-dd').format(_startDate),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'End Date:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      SizedBox(height: 8),
+                      TextField(
+                        controller: _searchController,
+                        onTap: () async {
+                          final DateTime? pickedDate = await showDatePicker(
+                            context: context,
+                            initialDate: _endDate,
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2101),
+                          );
+                          if (pickedDate != null && pickedDate != _endDate) {
+                            setState(() {
+                              _endDate = pickedDate;
+                            });
+                          }
+                        },
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(),
+                          hintText: DateFormat('yyyy-MM-dd').format(_endDate),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                updateData();
+              },
+              child: Text('Update Data'),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () async {
+                await downloadTableDataAsCsv();
+              },
+              child: Text('Download CSV'),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                // Add your functionality for uploading audio
+              },
+              child: Text('Upload Audio'),
+            ),
+          ],
         ),
       ),
     );
@@ -714,17 +408,16 @@ class ApiData {
   final String timestamp;
   final List<Detection> detections;
 
-  ApiData({
-    required this.timestamp,
-    required this.detections,
-  });
+  ApiData({required this.timestamp, required this.detections});
 
   factory ApiData.fromJson(Map<String, dynamic> json) {
+    var detectionsList = json['detections'] as List<dynamic>;
+    List<Detection> detections = detectionsList
+        .map((detectionJson) => Detection.fromJson(detectionJson))
+        .toList();
     return ApiData(
-      timestamp: json['TimeStamp'],
-      detections: (json['Detections'] as List)
-          .map((detectionJson) => Detection.fromJson(detectionJson))
-          .toList(),
+      timestamp: json['timestamp'],
+      detections: detections,
     );
   }
 }
@@ -734,18 +427,16 @@ class Detection {
   final String scientificName;
   final double confidence;
 
-  Detection({
-    required this.commonName,
-    required this.scientificName,
-    required this.confidence,
-  });
+  Detection(
+      {required this.commonName,
+      required this.scientificName,
+      required this.confidence});
 
   factory Detection.fromJson(Map<String, dynamic> json) {
     return Detection(
-      commonName: json['common_name'],
-      scientificName: json['scientific_name'],
-      confidence:
-          double.parse((json['confidence'] as double).toStringAsFixed(3)),
+      commonName: json['commonName'],
+      scientificName: json['scientificName'],
+      confidence: json['confidence'].toDouble(),
     );
   }
 }

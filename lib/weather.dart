@@ -1,819 +1,428 @@
 import 'dart:convert';
-import 'dart:html' as html;
-import 'package:csv/csv.dart';
-import 'check_permission.dart';
-import 'directory_path.dart';
-import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
-import 'package:intl/intl.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'constant.dart';
 
-class Weather extends StatefulWidget {
-  // final String deviceId;
-
-  // const Weather({
-  //   super.key,
-  //   required this.deviceId,
-  // });
-
+class WeatherPage extends StatefulWidget {
   @override
-  State<Weather> createState() => _MyHomePageState();
+  _WeatherPageState createState() => _WeatherPageState();
 }
 
-List<apiData> chartData = [];
-List<Device> activeDeviceData = [];
-List<Device> inactiveDeviceData = [];
-List<Device> filteredDeviceData = [];
-String? _selectedDeviceId;
-TextEditingController _searchController = TextEditingController();
-
-class _MyHomePageState extends State<Weather> {
-  late TooltipBehavior _tooltipBehavior;
-  late DateTime _startDate;
-  late DateTime _endDate;
-  List<dynamic> data = [];
-  late String csvString = " ";
-  String errorMessage = '';
-  late String Class = " ";
-  var checkAllPermission = CheckPermission();
-  var getDirectoryPath = DirectoryPath();
+class _WeatherPageState extends State<WeatherPage> {
+  DateTime _selectedDay = DateTime.now();
+  DateTime _focusedDay = DateTime.now();
+  List<ChartData> hiveTempData = [];
+  List<ChartData> gustSpeedData = [];
+  List<ChartData> weatherHumidityData = [];
+  List<ChartData> cloudCoverageData = [];
+  List<ChartData> hiveHumidityData = [];
+  List<ChartData> weatherPressureData = [];
+  List<ChartData> rainData = [];
+  List<ChartData> weatherTempData = [];
+  List<ChartData> windSpeedData = [];
+  List<dynamic> devices = [];
+  String _selectedDevice = '';
+  String _currentStatus = 'Unknown';
+  String _dataReceivedTime = 'Unknown';
 
   @override
   void initState() {
     super.initState();
-    _startDate = DateTime.parse(DateTime.now().toString());
-    _endDate = DateTime.parse(DateTime.now().toString());
+    _fetchDevicesList();
   }
 
-  void _filterDevices() {
+  Future<void> _fetchDevicesList() async {
+    final response = await http.get(Uri.parse(
+        'https://c27wvohcuc.execute-api.us-east-1.amazonaws.com/default/beehive_activity_api'));
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      setState(() {
+        devices = data;
+        if (devices.isNotEmpty) {
+          _selectedDevice = devices[0]['deviceId'];
+          _updateDeviceDetails(devices[0]);
+          fetchData(); // Fetch data with the default selected device
+        }
+      });
+    } else {
+      throw Exception('Failed to load devices');
+    }
+  }
+
+  Future<void> fetchData() async {
+    if (_selectedDevice.isEmpty) return;
+
+    // Internal Weather Data
+    final internalResponse = await http.get(Uri.parse(
+        'https://n2rgan0jj5.execute-api.us-west-2.amazonaws.com/default/beehive-api?deviceid=$_selectedDevice&startdate=${_selectedDay.toLocal().toIso8601String().split('T')[0]}&enddate=${_selectedDay.toLocal().toIso8601String().split('T')[0]}'));
+
+    // External Weather Data
+    final externalResponse = await http.get(Uri.parse(
+        'https://ixzeyfcuw5.execute-api.us-east-1.amazonaws.com/default/weather_station_awadh_api?deviceid=$_selectedDevice&startdate=${_selectedDay.toLocal().toIso8601String().split('T')[0]}&enddate=${_selectedDay.toLocal().toIso8601String().split('T')[0]}'));
+
+    if (internalResponse.statusCode == 200 &&
+        externalResponse.statusCode == 200) {
+      List<dynamic> internalData = json.decode(internalResponse.body);
+      List<dynamic> externalData = json.decode(externalResponse.body);
+
+      setState(() {
+        hiveTempData = internalData
+            .map((item) => ChartData.fromJson(item, 'hive_temp'))
+            .toList();
+        hiveHumidityData = internalData
+            .map((item) => ChartData.fromJson(item, 'hive_humidity'))
+            .toList();
+
+        gustSpeedData = externalData
+            .map((item) => ChartData.fromJson(item, 'gust_speed'))
+            .toList();
+        weatherHumidityData = externalData
+            .map((item) => ChartData.fromJson(item, 'weather_humidity'))
+            .toList();
+        cloudCoverageData = externalData
+            .map((item) => ChartData.fromJson(item, 'cloud_coverage'))
+            .toList();
+        weatherPressureData = externalData
+            .map((item) => ChartData.fromJson(item, 'weather_pressure'))
+            .toList();
+        rainData = externalData
+            .map((item) => ChartData.fromJson(item, 'rain'))
+            .toList();
+        weatherTempData = externalData
+            .map((item) => ChartData.fromJson(item, 'weather_temp'))
+            .toList();
+        windSpeedData = externalData
+            .map((item) => ChartData.fromJson(item, 'wind_speed'))
+            .toList();
+      });
+    } else {
+      throw Exception('Failed to load data');
+    }
+  }
+
+  void _updateDeviceDetails(Map<String, dynamic> device) {
+    final lastReceivedTime = device['lastReceivedTime'];
     setState(() {
-      filteredDeviceData = deviceData
-          .where((device) => device.deviceId
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()))
-          .toList();
-      activeDeviceData = activeDevice
-          .where((device) => device.deviceId
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()))
-          .toList();
-      inactiveDeviceData = inactiveDevice
-          .where((device) => device.deviceId
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()))
-          .toList();
+      _currentStatus = _getDeviceStatus(lastReceivedTime);
+      _dataReceivedTime = lastReceivedTime ?? 'Unknown';
     });
   }
 
-  Future<void> getAPIData(
-      String deviceId, DateTime _startDate, DateTime _endDate) async {
-    final response = await http.get(Uri.https(
-      'z6sd4rs5e9.execute-api.us-east-1.amazonaws.com',
-      '/devlopement/lambda_db',
-      {
-        'startdate': _startDate.year.toString() +
-            "-" +
-            _startDate.month.toString() +
-            "-" +
-            _startDate.day.toString(),
-        'enddate': _endDate.year.toString() +
-            "-" +
-            _endDate.month.toString() +
-            "-" +
-            _endDate.day.toString(),
-        'deviceid': _selectedDeviceId,
-      },
-    ));
-    final Map<String, dynamic> jsonDataMap =
-        Map<String, dynamic>.from(json.decode(response.body));
+  String _getDeviceStatus(String lastReceivedTime) {
+    if (lastReceivedTime == 'Unknown') return 'Unknown';
 
-    final List<Map<String, dynamic>> jsonData = [jsonDataMap];
-    List<List<dynamic>> csvData = [
-      [
-        "TimeStamp",
-        "DeviceId",
-        "Light_intensity(Lux)",
-        "Temperature(C)",
-        "Relative_Humidity(%)",
-      ]
-    ];
+    try {
+      final dateTimeParts = lastReceivedTime.split('_');
+      final datePart = dateTimeParts[0].split('-');
+      final timePart = dateTimeParts[1].split('-');
 
-    List<dynamic> row = [];
-    List<dynamic> test = jsonData[0]["body"];
-    int len = test.length;
-    print("Data: ${len}");
+      final day = int.parse(datePart[0]);
+      final month = int.parse(datePart[1]);
+      final year = int.parse(datePart[2]);
 
-    for (int i = 0; i < len; i++) {
-      row = [];
-      row.add(jsonData[0]["body"][i]['TimeStamp']);
-      row.add(jsonData[0]["body"][i]['DeviceId']);
-      row.add(jsonData[0]["body"][i]['Light_intensity(Lux)']);
-      row.add(jsonData[0]["body"][i]['Temperature(C)']);
-      row.add(jsonData[0]["body"][i]['Relative_Humidity(%)']);
+      final hour = int.parse(timePart[0]);
+      final minute = int.parse(timePart[1]);
+      final second = int.parse(timePart[2]);
 
-      csvData.add(row);
-    }
+      final lastReceivedDate = DateTime(year, month, day, hour, minute, second);
+      final currentTime = DateTime.now();
+      final difference = currentTime.difference(lastReceivedDate);
 
-    csvString = const ListToCsvConverter().convert(csvData);
-    print(csvString);
-    var parsed = jsonDecode(response.body); //.cast<Map<String, dynamic>>();
-    if (parsed['statusCode'] == 200) {
-      data = parsed['body'];
-      print(data);
-      chartData.clear();
-      for (dynamic i in data) {
-        chartData.add(apiData.fromJson(i));
+      if (difference.inMinutes <= 7) {
+        return 'Active';
+      } else {
+        return 'Inactive';
       }
-      setState(() {});
-    } else if (parsed['statusCode'] == 400 ||
-        parsed['statusCode'] == 404 ||
-        parsed['statusCode'] == 500) {
-      setState(() {
-        errorMessage = parsed['body'][0]['message'];
-      });
-    } else {
-      throw Exception('Failed to load api');
+    } catch (e) {
+      return 'Inactive';
     }
   }
 
-  Future<void> downloadCsvFile(String csvString, String filename) async {
-    // Convert the CSV string to a byte list.
-    List<int> csvBytes = utf8.encode(csvString);
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDay,
+      firstDate: DateTime(1970),
+      lastDate: DateTime(2025),
+    );
 
-    // Create a blob containing the CSV data.
-    final blob = html.Blob([csvBytes], 'text/csv');
-
-    // Create a URL for the blob.
-    final url = html.Url.createObjectUrlFromBlob(blob);
-
-    // Create a download link and click it to initiate the download.
-    final anchor = html.document.createElement('a') as html.AnchorElement
-      ..href = url
-      ..download = filename;
-    html.document.body!.append(anchor);
-    anchor.click();
-
-    // Clean up by revoking the URL object.
-    html.Url.revokeObjectUrl(url);
-  }
-
-  void handleDownloadButtonPressed() async {
-    // String csvString = 'header1,header2,header3\nvalue1,value2,value3';
-    String filename = 'InsectCount.csv';
-    await downloadCsvFile(csvString, filename);
-    print('Download completed!');
-    print('Successful');
-  }
-
-  void updateData() async {
-    await getAPIData(_selectedDeviceId!, _startDate, _endDate);
+    if (picked != null && picked != _selectedDay) {
+      setState(() {
+        _selectedDay = picked;
+        fetchData(); // Fetch data for the selected date
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'TimeSeries Graph For Weather Data for ' + _selectedDeviceId!,
-          style: TextStyle(
-            fontSize: 20.0,
-            letterSpacing: 1.0,
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: Colors.green,
-        elevation: 0.0,
-        centerTitle: true,
+        title: Text('Weather Data'),
       ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Container(
-            padding: EdgeInsets.all(16.0),
+      body: Column(
+        children: [
+          // Dropdown for Device Selection
+          Padding(
+            padding: const EdgeInsets.all(16.0),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                DropdownButton<String>(
+                  value: _selectedDevice.isNotEmpty ? _selectedDevice : null,
+                  hint: Text('Select Device'),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedDevice = newValue!;
+                      final selectedDevice = devices.firstWhere(
+                          (device) => device['deviceId'] == _selectedDevice,
+                          orElse: () => {});
+                      _updateDeviceDetails(selectedDevice);
+                      fetchData(); // Fetch data for the new device
+                    });
+                  },
+                  items: devices.map<DropdownMenuItem<String>>((device) {
+                    return DropdownMenuItem<String>(
+                      value: device['deviceId'],
+                      child: Text(device['deviceId']),
+                    );
+                  }).toList(),
+                ),
+                SizedBox(height: 16),
+                // Device Details
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        //with sub dropdowns
-                        decoration: InputDecoration(
-                          labelText: 'All Devices',
-                          border: OutlineInputBorder(),
-                        ),
-                        value: _selectedDeviceId != null &&
-                                activeDeviceData.any((device) =>
-                                    device.deviceId == _selectedDeviceId)
-                            ? _selectedDeviceId
-                            : null,
-                        items: [
-                          ...activeDeviceData.map((device) {
-                            return DropdownMenuItem<String>(
-                              value: device.deviceId,
-                              child: Text(
-                                device.deviceId,
-                                style: TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold),
-                              ),
-                            );
-                          }).toList(),
-                          ...inactiveDeviceData.map((device) {
-                            return DropdownMenuItem<String>(
-                              value: device.deviceId,
-                              child: Text(
-                                device.deviceId,
-                              ),
-                            );
-                          }).toList(),
-                        ],
-                        onChanged: (String? newValue) {
-                          setState(() {
-                            _selectedDeviceId = newValue;
-                          });
-                        },
+                      child: Text(
+                        'Device ID:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Current Status:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Data Received Time:',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, fontSize: 16),
                       ),
                     ),
                   ],
                 ),
+                SizedBox(height: 8),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Expanded(
-                      child: TextFormField(
-                        onTap: () async {
-                          final DateTime? selectedDate = await showDatePicker(
-                            context: context,
-                            initialDate: _startDate ?? DateTime.now(),
-                            firstDate: DateTime(1900),
-                            lastDate: DateTime.now(),
-                            builder: (context, child) {
-                              return Theme(
-                                data: Theme.of(context).copyWith(
-                                  colorScheme: const ColorScheme.light(
-                                    primary: Colors.green,
-                                    onPrimary: Colors.white,
-                                    onSurface: Colors.purple,
-                                  ),
-                                  textButtonTheme: TextButtonThemeData(
-                                    style: TextButton.styleFrom(
-                                      elevation: 10,
-                                      backgroundColor:
-                                          Colors.black, // button text color
-                                    ),
-                                  ),
-                                ),
-                                // child: child!,
-                                child: MediaQuery(
-                                  data: MediaQuery.of(context)
-                                      .copyWith(alwaysUse24HourFormat: true),
-                                  child: child ?? Container(),
-                                ),
-                              );
-                            },
-                          );
-                          if (selectedDate != null) {
-                            setState(() {
-                              _startDate = selectedDate;
-                            });
-                          }
-                        },
-                        decoration: InputDecoration(
-                          labelText: 'Start Date',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                              vertical: 12, horizontal: 16),
-                        ),
-                        controller: TextEditingController(
-                            text: _startDate != null
-                                ? DateFormat('yyyy-MM-dd').format(_startDate)
-                                : ''),
-                      ),
-                    ),
-                    SizedBox(width: 16.0),
-                    Expanded(
-                      child: TextFormField(
-                        onTap: () async {
-                          final DateTime? selectedDate = await showDatePicker(
-                            context: context,
-                            initialDate: _endDate ?? DateTime.now(),
-                            firstDate: DateTime(1900),
-                            lastDate: DateTime.now(),
-                            builder: (context, child) {
-                              return Theme(
-                                data: Theme.of(context).copyWith(
-                                  colorScheme: const ColorScheme.light(
-                                    primary: Colors.green,
-                                    onPrimary: Colors.white,
-                                    onSurface: Colors.purple,
-                                  ),
-                                  textButtonTheme: TextButtonThemeData(
-                                    style: TextButton.styleFrom(
-                                      elevation: 10,
-                                      backgroundColor:
-                                          Colors.black, // button text color
-                                    ),
-                                  ),
-                                ),
-                                // child: child!,
-                                child: MediaQuery(
-                                  data: MediaQuery.of(context)
-                                      .copyWith(alwaysUse24HourFormat: true),
-                                  child: child ?? Container(),
-                                ),
-                              );
-                            },
-                          );
-                          if (selectedDate != null) {
-                            setState(() {
-                              _endDate = selectedDate;
-                            });
-                          }
-                        },
-                        decoration: InputDecoration(
-                          labelText: 'End Date',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(
-                              vertical: 12, horizontal: 16),
-                        ),
-                        controller: TextEditingController(
-                            text: _endDate != null
-                                ? DateFormat('yyyy-MM-dd').format(_endDate)
-                                : ''),
-                      ),
-                    ),
-                    SizedBox(width: 16.0),
-                    ElevatedButton(
-                      onPressed: () {
-                        updateData();
-                      },
-                      child: Text(
-                        'Get Data',
-                        style: TextStyle(
-                          fontSize: 20,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            Colors.green, // Set the button color to green
-                        minimumSize:
-                            Size(80, 0), // Set a minimum width for the button
-                        padding:
-                            EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 16.0),
-                    ElevatedButton(
-                      onPressed: handleDownloadButtonPressed,
-                      child: Text(
-                        'Download CSV',
-                        style: TextStyle(
-                          fontSize: 20,
-                        ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            Colors.green, // Set the button color to green
-                        minimumSize:
-                            Size(80, 0), // Set a minimum width for the button
-                        padding:
-                            EdgeInsets.symmetric(vertical: 20, horizontal: 24),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
+                    Expanded(child: Text(_selectedDevice)),
+                    Expanded(child: Text(_currentStatus)),
+                    Expanded(child: Text(_dataReceivedTime)),
                   ],
                 ),
-                SizedBox(height: 32.0),
-                if (errorMessage.isNotEmpty)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Container(
-                        height: 400,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.5),
-                              spreadRadius: 2,
-                              blurRadius: 5,
-                              offset: Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            errorMessage,
-                            style: TextStyle(
-                              color: Colors.red,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                            ),
-                            semanticsLabel: errorMessage = "",
-                          ),
-                        ),
-                      ),
-                    ),
-                  )
-                else
-                  Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          height: 400,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16.0),
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.shade300,
-                                blurRadius: 5.0,
-                                spreadRadius: 1.0,
-                                offset: Offset(0.0, 0.0),
-                              ),
-                            ],
-                          ),
-                          child: SfCartesianChart(
-                            plotAreaBackgroundColor: Colors.white,
-                            primaryXAxis: CategoryAxis(
-                              title: AxisTitle(
-                                text: 'Time',
-                                textStyle:
-                                    TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              labelRotation: 45,
-                            ),
-                            primaryYAxis: NumericAxis(
-                              title: AxisTitle(
-                                text: 'Temperature(°C)',
-                                textStyle:
-                                    TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              axisLine: AxisLine(width: 0),
-                              majorGridLines: MajorGridLines(width: 0.5),
-                            ),
-                            tooltipBehavior: TooltipBehavior(
-                              enable: true,
-                              color: Colors.white,
-                              // textStyle: TextStyle(color: Colors.white),
-                              builder: (dynamic data,
-                                  dynamic point,
-                                  dynamic series,
-                                  int pointIndex,
-                                  int seriesIndex) {
-                                final apiData item = chartData[pointIndex];
-                                return Container(
-                                  padding: EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Color.fromARGB(255, 245, 214, 250),
-                                    borderRadius: BorderRadius.circular(5),
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: Colors.purple, blurRadius: 3)
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text("TimeStamp: ${item.TimeStamp}"),
-                                      Text("Temperature: ${item.Temperature}"),
-                                      // Text("Class: ${item.Class}"),
-                                    ],
-                                  ),
-                                );
-                              },
-                              // customize the tooltip color
-                            ),
-                            title: ChartTitle(
-                              text: 'Temperature Graph',
-                              textStyle: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            series: <ChartSeries<apiData, String>>[
-                              LineSeries<apiData, String>(
-                                // name: 'Apis Mellifera',
-                                markerSettings: const MarkerSettings(
-                                  height: 3.0,
-                                  width: 3.0,
-                                  borderColor: Colors.green,
-                                  isVisible: true,
-                                ),
-                                dataSource: chartData,
-                                xValueMapper: (apiData sales, _) =>
-                                    sales.TimeStamp,
-                                yValueMapper: (apiData sales, _) =>
-                                    double.parse(sales.Temperature),
-                                dataLabelSettings:
-                                    DataLabelSettings(isVisible: false),
-                                enableTooltip: true,
-                                animationDuration: 0,
-                              )
-                            ],
-                            zoomPanBehavior: ZoomPanBehavior(
-                              enablePinching: true,
-                              enablePanning: true,
-                              enableDoubleTapZooming: true,
-                              enableMouseWheelZooming: true,
-                              enableSelectionZooming: true,
-                              selectionRectBorderWidth: 1.0,
-                              selectionRectBorderColor: Colors.blue,
-                              selectionRectColor:
-                                  Colors.transparent.withOpacity(0.3),
-                              zoomMode: ZoomMode.x,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 20.0),
-                        Container(
-                          height: 400,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16.0),
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.shade300,
-                                blurRadius: 5.0,
-                                spreadRadius: 1.0,
-                                offset: Offset(0.0, 0.0),
-                              ),
-                            ],
-                          ),
-                          child: SfCartesianChart(
-                            plotAreaBackgroundColor: Colors.white,
-                            primaryXAxis: CategoryAxis(
-                              title: AxisTitle(
-                                text: 'Time',
-                                textStyle:
-                                    TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              labelRotation: 45,
-                            ),
-                            primaryYAxis: NumericAxis(
-                              title: AxisTitle(
-                                text: 'Light Intensity(Lux)',
-                                textStyle:
-                                    TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              axisLine: AxisLine(width: 0),
-                              majorGridLines: MajorGridLines(width: 0.5),
-                            ),
-                            tooltipBehavior: TooltipBehavior(
-                              enable: true,
-                              color: Colors.white,
-                              // textStyle: TextStyle(color: Colors.white),
-                              builder: (dynamic data,
-                                  dynamic point,
-                                  dynamic series,
-                                  int pointIndex,
-                                  int seriesIndex) {
-                                final apiData item = chartData[pointIndex];
-                                return Container(
-                                  padding: EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Color.fromARGB(255, 245, 214, 250),
-                                    borderRadius: BorderRadius.circular(5),
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: Colors.purple, blurRadius: 3)
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text("TimeStamp: ${item.TimeStamp}"),
-                                      Text(
-                                          "Light Intensity: ${item.Light_intensity}"),
-                                      // Text("Class: ${item.Class}"),
-                                    ],
-                                  ),
-                                );
-                              },
-                              // customize the tooltip color
-                            ),
-                            title: ChartTitle(
-                              text: 'Light Intensity Graph',
-                              textStyle: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            series: <ChartSeries<apiData, String>>[
-                              LineSeries<apiData, String>(
-                                // name: 'Apis Mellifera',
-                                markerSettings: const MarkerSettings(
-                                  height: 3.0,
-                                  width: 3.0,
-                                  borderColor: Colors.green,
-                                  isVisible: true,
-                                ),
-                                dataSource: chartData,
-                                xValueMapper: (apiData sales, _) =>
-                                    sales.TimeStamp,
-                                yValueMapper: (apiData sales, _) =>
-                                    double.parse(sales.Light_intensity),
-                                dataLabelSettings:
-                                    DataLabelSettings(isVisible: false),
-                                enableTooltip: true,
-                                animationDuration: 0,
-                              )
-                            ],
-                            zoomPanBehavior: ZoomPanBehavior(
-                              enablePinching: true,
-                              enablePanning: true,
-                              enableDoubleTapZooming: true,
-                              enableMouseWheelZooming: true,
-                              enableSelectionZooming: true,
-                              selectionRectBorderWidth: 1.0,
-                              selectionRectBorderColor: Colors.blue,
-                              selectionRectColor:
-                                  Colors.transparent.withOpacity(0.3),
-                              zoomMode: ZoomMode.x,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 20.0),
-                        Container(
-                          height: 400,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16.0),
-                            color: Colors.white,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.grey.shade300,
-                                blurRadius: 5.0,
-                                spreadRadius: 1.0,
-                                offset: Offset(0.0, 0.0),
-                              ),
-                            ],
-                          ),
-                          child: SfCartesianChart(
-                            // legend: Legend(
-                            //   isVisible: true,
-                            //   // name:legend,
-                            //   position: LegendPosition.top,
-                            //   offset: const Offset(550, -150),
-                            //   // toggleSeriesVisibility: true,
-                            //   // Border color and border width of legend
-                            //   overflowMode: LegendItemOverflowMode.wrap,
-                            //   // borderColor: Colors.black,
-                            //   // borderWidth: 2
-                            // ),
-                            plotAreaBackgroundColor: Colors.white,
-                            primaryXAxis: CategoryAxis(
-                              title: AxisTitle(
-                                text: 'Time',
-                                textStyle:
-                                    TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              labelRotation: 45,
-                            ),
-                            primaryYAxis: NumericAxis(
-                              title: AxisTitle(
-                                text: 'Relative Humidity(%)',
-                                textStyle:
-                                    TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              axisLine: AxisLine(width: 0),
-                              majorGridLines: MajorGridLines(width: 0.5),
-                            ),
-                            tooltipBehavior: TooltipBehavior(
-                              enable: true,
-                              color: Colors.white,
-                              // textStyle: TextStyle(color: Colors.white),
-                              builder: (dynamic data,
-                                  dynamic point,
-                                  dynamic series,
-                                  int pointIndex,
-                                  int seriesIndex) {
-                                final apiData item = chartData[pointIndex];
-                                return Container(
-                                  padding: EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Color.fromARGB(255, 245, 214, 250),
-                                    borderRadius: BorderRadius.circular(5),
-                                    boxShadow: [
-                                      BoxShadow(
-                                          color: Colors.purple, blurRadius: 3)
-                                    ],
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Text("TimeStamp: ${item.TimeStamp}"),
-                                      Text(
-                                          "Relative Humidity: ${item.Relative_Humidity}"),
-                                      // Text("Class: ${item.Class}"),
-                                    ],
-                                  ),
-                                );
-                              },
-                              // customize the tooltip color
-                            ),
-                            title: ChartTitle(
-                              text: 'Relative Humidity Graph',
-                              textStyle: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            series: <ChartSeries<apiData, String>>[
-                              LineSeries<apiData, String>(
-                                // name: 'Apis Mellifera',
-                                markerSettings: const MarkerSettings(
-                                  height: 3.0,
-                                  width: 3.0,
-                                  borderColor: Colors.green,
-                                  isVisible: true,
-                                ),
-                                dataSource: chartData,
-                                xValueMapper: (apiData sales, _) =>
-                                    sales.TimeStamp,
-                                yValueMapper: (apiData sales, _) =>
-                                    double.parse(sales.Relative_Humidity),
-                                dataLabelSettings:
-                                    DataLabelSettings(isVisible: false),
-                                enableTooltip: true,
-                                animationDuration: 0,
-                              )
-                            ],
-                            zoomPanBehavior: ZoomPanBehavior(
-                              enablePinching: true,
-                              enablePanning: true,
-                              enableDoubleTapZooming: true,
-                              enableMouseWheelZooming: true,
-                              enableSelectionZooming: true,
-                              selectionRectBorderWidth: 1.0,
-                              selectionRectBorderColor: Colors.blue,
-                              selectionRectColor:
-                                  Colors.transparent.withOpacity(0.3),
-                              zoomMode: ZoomMode.x,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
               ],
             ),
           ),
+          // Date Picker Button
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton(
+              onPressed: _selectDate,
+              child: Text(
+                  'Select Date: ${_selectedDay.toLocal().toIso8601String().split('T')[0]}'),
+            ),
+          ),
+          // Row for Internal and External Weather Sections
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Row(
+                children: [
+                  // Internal Weather Section
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Card(
+                        elevation: 5,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Internal Weather',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 10),
+                              Text('Temperature: XX°C'),
+                              Text('Humidity: XX%'),
+                              // Text('Air Quality: Good'),
+                              SizedBox(height: 20),
+                              // Increased container height
+                              Container(
+                                height: 300, // Adjust height as needed
+                                child: ListView(
+                                  shrinkWrap: true,
+                                  children: [
+                                    _buildChartContainer('Hive Temperature',
+                                        hiveTempData, 'Temperature(°C)'),
+                                    _buildChartContainer('Hive Humidity',
+                                        hiveHumidityData, 'Humidity(%)'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  // External Weather Section
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Card(
+                        elevation: 5,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'External Weather',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              SizedBox(height: 10),
+                              Text('Light Intensity : XXLux'),
+                              Text('Temperature: XX°C'),
+                              Text('Humidity: XX%'),
+                              // Text('Wind Speed: XX km/h'),
+                              SizedBox(height: 20),
+                              // Increased container height
+                              Container(
+                                height: 300, // Adjust height as needed
+                                child: ListView(
+                                  shrinkWrap: true,
+                                  children: [
+                                    _buildChartContainer('Gust Speed',
+                                        gustSpeedData, 'Speed(m/s)'),
+                                    _buildChartContainer('Weather Humidity',
+                                        weatherHumidityData, 'Humidity(%)'),
+                                    _buildChartContainer('Cloud Coverage',
+                                        cloudCoverageData, 'Coverage(%)'),
+                                    _buildChartContainer('Weather Pressure',
+                                        weatherPressureData, 'Pressure(hPa)'),
+                                    _buildChartContainer(
+                                        'Rain', rainData, 'Rain(mm)'),
+                                    _buildChartContainer('Weather Temperature',
+                                        weatherTempData, 'Temperature(°C)'),
+                                    _buildChartContainer('Wind Speed',
+                                        windSpeedData, 'Speed(m/s)'),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChartContainer(
+      String title, List<ChartData> data, String yAxisTitle) {
+    return Container(
+      height: 400,
+      margin: EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16.0),
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.shade300,
+            blurRadius: 5.0,
+            spreadRadius: 1.0,
+            offset: Offset(0.0, 0.0),
+          ),
+        ],
+      ),
+      child: SfCartesianChart(
+        plotAreaBackgroundColor: Colors.white,
+        primaryXAxis: CategoryAxis(
+          title: AxisTitle(
+            text: 'Time',
+            textStyle: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          labelRotation: 45,
         ),
+        primaryYAxis: NumericAxis(
+          title: AxisTitle(
+            text: yAxisTitle,
+            textStyle: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          axisLine: AxisLine(width: 0),
+          majorGridLines: MajorGridLines(width: 0.5),
+        ),
+        tooltipBehavior: TooltipBehavior(
+          enable: true,
+          builder: (dynamic data, dynamic point, dynamic series, int pointIndex,
+              int seriesIndex) {
+            final ChartData chartData = data as ChartData;
+            return Container(
+              padding: EdgeInsets.all(8),
+              color: Colors.white,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Date: ${chartData.date}'),
+                  Text('Value: ${chartData.value}'),
+                ],
+              ),
+            );
+          },
+        ),
+        series: <ChartSeries<ChartData, String>>[
+          LineSeries<ChartData, String>(
+            dataSource: data,
+            xValueMapper: (ChartData data, _) => data.date,
+            yValueMapper: (ChartData data, _) => data.value,
+            name: title,
+            color: Colors.blue,
+          ),
+        ],
       ),
     );
   }
 }
 
-Future<List<dynamic>> getAPIData(
-    String deviceId, DateTime _startDate, DateTime _endDate) async {
-  final response = await http.get(Uri.https(
-    'z6sd4rs5e9.execute-api.us-east-1.amazonaws.com',
-    '/devlopement/lambda_db',
-    {
-      'startdate': _startDate.year.toString() +
-          "-" +
-          _startDate.month.toString() +
-          "-" +
-          _startDate.day.toString(),
-      'enddate': _endDate.year.toString() +
-          "-" +
-          _endDate.month.toString() +
-          "-" +
-          _endDate.day.toString(),
-      'deviceid': deviceId,
-    },
-  ));
-  var parsed = jsonDecode(response.body); //.cast<Map<String, dynamic>>();
-  if (response.statusCode == 200) {
-    List<dynamic> data = parsed['body'];
-    return data;
-  } else {
-    // If the server did not return a 200 OK response,
-    // then throw an exception.
-    throw Exception('Failed to load api');
-  }
-}
+class ChartData {
+  final String date;
+  final double value;
 
-class apiData {
-  apiData(this.TimeStamp, this.Light_intensity, this.Temperature,
-      this.Relative_Humidity);
+  ChartData({required this.date, required this.value});
 
-  final String TimeStamp;
-  final String Light_intensity;
-  final String Temperature;
-  final String Relative_Humidity;
-
-  factory apiData.fromJson(dynamic parsedJson) {
-    return apiData(
-      parsedJson['TimeStamp'].toString(),
-      parsedJson['Light_intensity(Lux)'].toString(),
-      parsedJson['Temperature(C)'].toString(),
-      parsedJson['Relative_Humidity(%)'].toString(),
+  factory ChartData.fromJson(Map<String, dynamic> json, String type) {
+    return ChartData(
+      date: json['date'] ?? '',
+      value: json[type] != null ? double.parse(json[type].toString()) : 0.0,
     );
   }
 }

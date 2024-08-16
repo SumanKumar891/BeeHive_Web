@@ -6,69 +6,13 @@ import 'package:syngenta/birdnet.dart';
 import 'package:syngenta/BeeActivityPage.dart';
 
 class StartPage extends StatelessWidget {
-  void _openBirdNetDialog(BuildContext context) {
-    String enteredDeviceId = '';
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(
-            'Enter Device ID',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-              color: Colors.green,
-            ),
-          ),
-          content: Container(
-            margin: EdgeInsets.symmetric(vertical: 10),
-            child: TextField(
-              onChanged: (value) {
-                enteredDeviceId = value;
-              },
-              decoration: InputDecoration(
-                hintText: 'S01',
-                border: OutlineInputBorder(),
-                filled: true,
-                fillColor: Colors.grey[200],
-              ),
-            ),
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: Text(
-                'Cancel',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 16,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (enteredDeviceId.isEmpty) {
-                  enteredDeviceId = 'S01'; // Default value
-                }
-                Navigator.of(context).pop();
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => birdNet(deviceId: enteredDeviceId),
-                  ),
-                );
-              },
-              style: ButtonStyle(
-                backgroundColor: MaterialStateProperty.all<Color>(Colors.green),
-              ),
-              child: Text('Next'),
-            ),
-          ],
-        );
-      },
+  void _navigateToBirdNet(BuildContext context) {
+    // Navigate directly to birdNet page
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => birdNet(deviceId: 'S01'), // Default device ID
+      ),
     );
   }
 
@@ -150,7 +94,7 @@ class StartPage extends StatelessWidget {
                       children: [
                         _buildCard(
                           title: 'Bee Hive Status',
-                          content: 'Four States Of Bees:',
+                          content: 'Is Queen Bee in the Hive?',
                           icon: Icons.bar_chart_sharp,
                           onPressed: () {
                             Navigator.of(context).push(
@@ -159,39 +103,39 @@ class StartPage extends StatelessWidget {
                             );
                           },
                           color: Color.fromARGB(255, 144, 212, 243),
-                          states: [
-                            'Queen Not Present',
-                            'Queen Present and Newly Accepted',
-                            'Queen Present and Rejected',
-                            'Queen Present or Original Queen'
-                          ],
-                          colors: [
-                            Colors.red,
-                            Colors.green,
-                            Colors.orange,
-                            const Color.fromARGB(255, 149, 33, 243)
-                          ],
+                          // states: [
+                          // //   'Queen Not Present',
+                          // //   'Queen Present and Newly Accepted',
+                          // //   'Queen Present and Rejected',
+                          // //   'Queen Present or Original Queen'
+                          // // ],
+                          // // colors: [
+                          // //   Colors.red,
+                          // //   Colors.green,
+                          // //   Colors.orange,
+                          // //   const Color.fromARGB(255, 149, 33, 243)
+                          // ],
                         ),
                         _buildCard(
                           title: 'Weather',
-                          content:
-                              'Temperature: 25°C\nHumidity: 60%\nWind Speed: 5 km/h',
+                          content: 'Curious to know the weather in hive?',
                           icon: Icons.wb_sunny,
                           onPressed: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(
-                                  builder: (context) => Weather()),
+                                  builder: (context) => WeatherPage()),
                             );
                           },
                           color: Color.fromARGB(255, 236, 137, 137),
                         ),
                         _buildCard(
                           title: 'Download Audio Data',
-                          content: '',
+                          content: 'Tap to download the bee audio data .',
                           icon: Icons.download,
                           isButton: true,
                           onPressed: () {
-                            _openBirdNetDialog(context);
+                            _navigateToBirdNet(context);
+                            // Direct navigation
                           },
                           color: Color.fromARGB(255, 139, 235, 147),
                         ),

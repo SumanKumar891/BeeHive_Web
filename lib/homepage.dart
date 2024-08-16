@@ -81,8 +81,8 @@ class _HomeScreenState extends State<HomePage> {
 
   TextEditingController _searchController = TextEditingController();
   List<Device> filteredDeviceData = [];
- List<Device> activeDeviceData = [];
-  List<Device> inactiveDeviceData = []; 
+  List<Device> activeDeviceData = [];
+  List<Device> inactiveDeviceData = [];
   List<String> imageUrls = [];
   String _currentTime = '';
   List<String> _subItems = [];
