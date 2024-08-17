@@ -145,7 +145,7 @@ class _WeatherPageState extends State<WeatherPage> {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: _selectedDay,
-      firstDate: DateTime(2020),
+      firstDate: DateTime(1970),
       lastDate: DateTime(2025),
     );
 
