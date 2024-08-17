@@ -11,7 +11,7 @@ class StartPage extends StatelessWidget {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => birdNet(deviceId: '01'), // Default device ID
+        builder: (context) => BirdNet(deviceId: '01'), // Default device ID
       ),
     );
   }

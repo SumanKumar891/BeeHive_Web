@@ -1,35 +1,31 @@
-import 'dart:io';
 import 'dart:html' as html;
-import 'package:csv/csv.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:path_provider/path_provider.dart';
 
-class birdNet extends StatefulWidget {
+class BirdNet extends StatefulWidget {
   final String deviceId;
 
-  const birdNet({Key? key, required this.deviceId}) : super(key: key);
+  const BirdNet({Key? key, required this.deviceId}) : super(key: key);
 
   @override
-  State<birdNet> createState() => _MyHomePageState();
+  State<BirdNet> createState() => _BirdNetState();
 }
 
-class _MyHomePageState extends State<birdNet> {
+class _BirdNetState extends State<BirdNet> {
   late DateTime _startDate;
   late DateTime _endDate;
   String errorMessage = '';
   List<ApiData> tableData = [];
   String searchTimestamp = '';
-  late TextEditingController _searchController; // Add TextEditingController
+  late TextEditingController _searchController;
   List<dynamic> devices = [];
   String _selectedDevice = '';
   String _currentStatus = 'Unknown';
   String _dataReceivedTime = 'Unknown';
   DateTime _selectedDay = DateTime.now();
+  bool _isDownloading = false; // Add a variable to track loading state
 
   @override
   void initState() {
@@ -144,6 +140,10 @@ class _MyHomePageState extends State<birdNet> {
       'https://ifu5tf7mu2.execute-api.us-east-1.amazonaws.com/default/bee-audio-download?deviceid=01&startdate=16-08-2024&enddate=16-08-2024';
 
   Future<void> downloadFile() async {
+    setState(() {
+      _isDownloading = true; // Set loading state to true
+    });
+
     try {
       final response = await http.get(Uri.parse(apiUrl));
 
@@ -154,6 +154,7 @@ class _MyHomePageState extends State<birdNet> {
         final anchor = html.AnchorElement(href: downloadUrl)
           ..setAttribute("download", "bee_audio.zip")
           ..click();
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Download started')),
         );
@@ -163,6 +164,10 @@ class _MyHomePageState extends State<birdNet> {
       }
     } catch (e) {
       print('Error occurred: $e');
+    } finally {
+      setState(() {
+        _isDownloading = false; // Set loading state to false after completion
+      });
     }
   }
 
@@ -173,6 +178,12 @@ class _MyHomePageState extends State<birdNet> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2025),
     );
+
+    if (picked != null && picked != _selectedDay) {
+      setState(() {
+        _selectedDay = picked;
+      });
+    }
   }
 
   @override
@@ -248,9 +259,7 @@ class _MyHomePageState extends State<birdNet> {
                 ],
               ),
             ),
-            SizedBox(
-              height: 20,
-            ),
+            SizedBox(height: 20),
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -264,10 +273,12 @@ class _MyHomePageState extends State<birdNet> {
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: ElevatedButton(
-                  onPressed: downloadFile,
-                  child: Text('Download ZIP'),
-                ),
+                child: _isDownloading
+                    ? CircularProgressIndicator()
+                    : ElevatedButton(
+                        onPressed: downloadFile,
+                        child: Text('Download ZIP'),
+                      ),
               ),
             ),
           ],
