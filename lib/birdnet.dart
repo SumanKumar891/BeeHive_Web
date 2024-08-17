@@ -22,8 +22,8 @@ class _BirdNetState extends State<BirdNet> {
   late TextEditingController _searchController;
   List<dynamic> devices = [];
   String _selectedDevice = '';
-  String _currentStatus = 'Unknown';
-  String _dataReceivedTime = 'Unknown';
+  String _currentStatus = 'Loading';
+  String _dataReceivedTime = 'Loading';
   DateTime _selectedDay = DateTime.now();
   bool _isDownloading = false; // Add a variable to track loading state
 
