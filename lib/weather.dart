@@ -52,17 +52,19 @@ class _WeatherPageState extends State<WeatherPage> {
   }
 
   Future<void> fetchData() async {
+    final cutoffDate = DateTime(2024, 8, 16);
+    final deviceId = _selectedDay.isBefore(cutoffDate) ? '1' : '01';
     final startDate = _formatDate(_selectedDay);
     final endDate = startDate;
 
     // Internal device ID
-    final internalDeviceId = '1';
+    // final internalDeviceId = '1';
     // External device ID
     final externalDeviceId = '202';
 
     // Fetch internal data
     final internalResponse = await http.get(Uri.parse(
-        'https://5gdhg1ja9d.execute-api.us-east-1.amazonaws.com/default/beehive_weather?deviceid=$internalDeviceId&startdate=$startDate&enddate=$endDate'));
+        'https://5gdhg1ja9d.execute-api.us-east-1.amazonaws.com/default/beehive_weather?deviceid=$deviceId&startdate=$startDate&enddate=$endDate'));
 
     // Fetch external data
     final externalResponse = await http.get(Uri.parse(
