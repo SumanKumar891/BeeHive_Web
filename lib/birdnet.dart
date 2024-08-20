@@ -14,70 +14,17 @@ class BirdNet extends StatefulWidget {
 }
 
 class _BirdNetState extends State<BirdNet> {
-  late DateTime _startDate;
-  late DateTime _endDate;
-  String errorMessage = '';
-  List<ApiData> tableData = [];
-  String searchTimestamp = '';
-  late TextEditingController _searchController;
   List<dynamic> devices = [];
   String _selectedDevice = '';
   String _currentStatus = 'Loading';
   String _dataReceivedTime = 'Loading';
-  DateTime _selectedDay = DateTime.now();
-  bool _isDownloading = false; // Add a variable to track loading state
+  DateTime? selectedDate;
+  bool _isDownloading = false;
 
   @override
   void initState() {
     super.initState();
-    _startDate = DateTime.now();
-    _endDate = DateTime.now();
-    _searchController = TextEditingController();
     _fetchDevicesList();
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> getAPIData(
-      String deviceId, DateTime startDate, DateTime endDate) async {
-    final response = await http.get(Uri.https(
-      'n7xpn7z3k8.execute-api.us-east-1.amazonaws.com',
-      '/default/bird_detections',
-      {
-        'deviceId': deviceId,
-        'startDate': DateFormat('dd-MM-yyyy').format(startDate),
-        'endDate': DateFormat('dd-MM-yyyy').format(endDate),
-      },
-    ));
-
-    if (response.statusCode == 200) {
-      final List<dynamic> jsonData = jsonDecode(response.body);
-      setState(() {
-        tableData = jsonData.map((item) => ApiData.fromJson(item)).toList();
-        // Sort the tableData list based on timestamp in descending order
-        tableData.sort((a, b) => DateFormat('dd-MM-yyyy_HH-mm-ss')
-            .parse(b.timestamp)
-            .compareTo(DateFormat('dd-MM-yyyy_HH-mm-ss').parse(a.timestamp)));
-      });
-    } else {
-      setState(() {
-        errorMessage = 'Failed to load data';
-      });
-    }
-  }
-
-  void updateData() async {
-    await getAPIData(widget.deviceId, _startDate, _endDate);
-  }
-
-  void searchByTimestamp(String timestamp) {
-    setState(() {
-      searchTimestamp = timestamp;
-    });
   }
 
   Future<void> _fetchDevicesList() async {
@@ -136,13 +83,19 @@ class _BirdNetState extends State<BirdNet> {
     }
   }
 
-  String apiUrl =
-      'https://ifu5tf7mu2.execute-api.us-east-1.amazonaws.com/default/bee-audio-download?deviceid=01&startdate=16-08-2024&enddate=16-08-2024';
-
   Future<void> downloadFile() async {
-    setState(() {
-      _isDownloading = true; // Set loading state to true
-    });
+    if (selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please select a date first')),
+      );
+      return;
+    }
+    final cutoffDate = DateTime(2024, 8, 16);
+    final deviceId = selectedDate!.isBefore(cutoffDate) ? '1' : '01';
+    String formattedDate = DateFormat('dd-MM-yyyy').format(selectedDate!);
+
+    String apiUrl =
+        'https://ifu5tf7mu2.execute-api.us-east-1.amazonaws.com/default/bee-audio-download?deviceid=$deviceId&startdate=$formattedDate&enddate=$formattedDate';
 
     try {
       final response = await http.get(Uri.parse(apiUrl));
@@ -154,7 +107,6 @@ class _BirdNetState extends State<BirdNet> {
         final anchor = html.AnchorElement(href: downloadUrl)
           ..setAttribute("download", "bee_audio.zip")
           ..click();
-
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Download started')),
         );
@@ -164,24 +116,20 @@ class _BirdNetState extends State<BirdNet> {
       }
     } catch (e) {
       print('Error occurred: $e');
-    } finally {
-      setState(() {
-        _isDownloading = false; // Set loading state to false after completion
-      });
     }
   }
 
-  Future<void> _selectDate() async {
+  Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDay,
+      initialDate: DateTime.now(),
       firstDate: DateTime(2020),
-      lastDate: DateTime(2025),
+      lastDate: DateTime(2101),
     );
 
-    if (picked != null && picked != _selectedDay) {
+    if (picked != null && picked != selectedDate) {
       setState(() {
-        _selectedDay = picked;
+        selectedDate = picked;
       });
     }
   }
@@ -264,12 +212,16 @@ class _BirdNetState extends State<BirdNet> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: ElevatedButton(
-                  onPressed: _selectDate,
+                  onPressed: () => _selectDate(context),
                   child: Text(
-                      'Select Date: ${_selectedDay.toLocal().toIso8601String().split('T')[0]}'),
+                    selectedDate == null
+                        ? 'Select Date'
+                        : 'Selected Date: ${DateFormat('dd-MM-yyyy').format(selectedDate!)}',
+                  ),
                 ),
               ),
             ),
+            SizedBox(height: 20),
             Center(
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -284,26 +236,6 @@ class _BirdNetState extends State<BirdNet> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class ApiData {
-  final String timestamp;
-  final String birdId;
-  final String confidence;
-
-  ApiData({
-    required this.timestamp,
-    required this.birdId,
-    required this.confidence,
-  });
-
-  factory ApiData.fromJson(Map<String, dynamic> json) {
-    return ApiData(
-      timestamp: json['timestamp'],
-      birdId: json['birdId'],
-      confidence: json['confidence'],
     );
   }
 }
