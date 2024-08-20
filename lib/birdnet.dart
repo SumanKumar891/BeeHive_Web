@@ -1,7 +1,7 @@
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart'; // Import url_launcher
 import 'dart:convert';
 
 class BirdNet extends StatefulWidget {
@@ -104,13 +104,15 @@ class _BirdNetState extends State<BirdNet> {
         final responseData = json.decode(response.body);
         final downloadUrl = responseData['download_url'];
 
-        final anchor = html.AnchorElement(href: downloadUrl)
-          ..setAttribute("download", "bee_audio.zip")
-          ..click();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download started')),
-        );
-        print('File downloaded successfully');
+        if (await canLaunch(downloadUrl)) {
+          await launch(downloadUrl);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Download started')),
+          );
+          print('File downloaded successfully');
+        } else {
+          print('Could not launch $downloadUrl');
+        }
       } else {
         print('Failed to create ZIP file: ${response.statusCode}');
       }
